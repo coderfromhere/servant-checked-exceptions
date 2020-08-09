@@ -37,11 +37,11 @@ import Control.Monad.Fix (MonadFix(mfix))
 import Data.Aeson
   ( FromJSON(parseJSON)
   , ToJSON(toJSON)
-  , Value
+  , Value(Object, Array)
   , (.:)
   , (.=)
   , object
-  , withObject
+  , withObject, withArray
   )
 import Data.Aeson.Types (Parser)
 import Data.Data (Data)
@@ -120,7 +120,7 @@ data Envelope es a = ErrEnvelope (OpenUnion es) | SuccEnvelope a
 instance (ToJSON (OpenUnion es), ToJSON a) => ToJSON (Envelope es a) where
   toJSON :: Envelope es a -> Value
   toJSON (ErrEnvelope es) = object ["err" .= es]
-  toJSON (SuccEnvelope a) = object ["data" .= a]
+  toJSON (SuccEnvelope a) = toJSON a
 
 -- | This is only a valid instance when the 'FromJSON' instances for the @es@
 -- don't overlap.
@@ -129,9 +129,11 @@ instance (ToJSON (OpenUnion es), ToJSON a) => ToJSON (Envelope es a) where
 -- 'Servant.Checked.Exceptions.Internal.Union.Union'.
 instance (FromJSON (OpenUnion es), FromJSON a) => FromJSON (Envelope es a) where
   parseJSON :: Value -> Parser (Envelope es a)
-  parseJSON = withObject "Envelope" $ \obj ->
-    SuccEnvelope <$> obj .: "data" <|>
-    ErrEnvelope <$> obj .: "err"
+  parseJSON (Object obj) =
+    SuccEnvelope <$> parseJSON (Object obj) <|>
+    ErrEnvelope  <$> obj .: "err"
+  parseJSON (Array arr) = SuccEnvelope <$> parseJSON (Array arr)
+
 
 deriving instance (Data (OpenUnion es), Data a, Typeable es) => Data (Envelope es a)
 deriving instance (Eq (OpenUnion es), Eq a) => Eq (Envelope es a)
